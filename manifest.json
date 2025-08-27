@@ -1,0 +1,20 @@
+{
+  "name": "Location Saver",
+  "short_name": "Locator",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d6efd",
+  "icons": [
+    {
+      "src": "icon-192.jpg",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
