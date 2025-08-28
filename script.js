@@ -32,7 +32,7 @@ function saveLocation(){
             label,
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
-            timestamp: new Date().toLocaleString(),
+            timestamp: new Date().toISOString(), // ISO for proper sorting
             pinned: false
         });
 
@@ -71,7 +71,7 @@ function loadLocations(){
         const searchVal = document.getElementById("search")?.value.toLowerCase() || "";
         if(searchVal) locations = locations.filter(l=>l.label.toLowerCase().includes(searchVal));
 
-        // Sort and pinned-first
+        // Sort + pinned-first
         const sortVal = document.getElementById("sort")?.value || "newest";
         locations.sort((a,b)=>{
             if(a.pinned && !b.pinned) return -1;
@@ -91,9 +91,11 @@ function loadLocations(){
                 const div = document.createElement("div");
                 div.className = "card" + (loc.pinned ? " pinned" : "");
                 const distance = getDistance(currLat, currLng, loc.lat, loc.lng);
+                const displayTime = new Date(loc.timestamp).toLocaleString();
+
                 div.innerHTML = `
                     <strong>${loc.label}${loc.pinned ? " ⭐" : ""}</strong>
-                    <p>📅 ${loc.timestamp}</p>
+                    <p>📅 ${displayTime}</p>
                     <p>🌍 (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) - ${distance < 1000 ? distance.toFixed(0)+" m" : (distance/1000).toFixed(2)+" km"}</p>
                     <div class="map-container" id="map-${loc.id}"></div>
                     <button onclick="togglePin(${loc.id})">${loc.pinned ? "Unpin" : "Pin"}</button>
@@ -102,6 +104,7 @@ function loadLocations(){
                 `;
                 container.appendChild(div);
 
+                // Leaflet map
                 const map = L.map(`map-${loc.id}`, {zoomControl:false, attributionControl:false}).setView([loc.lat, loc.lng], 16);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
                 L.marker([loc.lat, loc.lng]).addTo(map);
