@@ -1,112 +1,150 @@
-document.addEventListener("DOMContentLoaded", loadLocations);
-const saveBtn = document.getElementById("save-btn");
-saveBtn.addEventListener("click", saveLocation);
+let db;
+const request = indexedDB.open("locavaDB", 1);
 
-// Haversine formula for distance
-function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371e3; // meters
-  const φ1 = lat1 * Math.PI/180;
-  const φ2 = lat2 * Math.PI/180;
-  const Δφ = (lat2-lat1) * Math.PI/180;
-  const Δλ = (lon2-lon1) * Math.PI/180;
-  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R*c; // meters
-}
-
-function saveLocation() {
-  let label = document.getElementById("label").value.trim();
-  if(!label) label = "Unnamed Location";
-
-  if(!navigator.geolocation) { alert("Geolocation not supported"); return; }
-
-  navigator.geolocation.getCurrentPosition(pos => {
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-
-    const location = {
-      label, lat, lng,
-      timestamp: new Date().toLocaleString(),
-      pinned: false
-    };
-
-    let locations = JSON.parse(localStorage.getItem("locations")) || [];
-    locations.push(location);
-    localStorage.setItem("locations", JSON.stringify(locations));
-
-    document.getElementById("label").value = "";
+request.onerror = (e) => console.log("DB error", e);
+request.onsuccess = (e) => {
+    db = e.target.result;
     loadLocations();
-  });
-}
+};
 
-function loadLocations() {
-  const container = document.getElementById("locations");
-  container.innerHTML = "";
-  let locations = JSON.parse(localStorage.getItem("locations")) || [];
+request.onupgradeneeded = (e) => {
+    db = e.target.result;
+    if(!db.objectStoreNames.contains("locations")){
+        const store = db.createObjectStore("locations", { keyPath: "id", autoIncrement: true });
+        store.createIndex("label", "label", { unique: false });
+        store.createIndex("timestamp", "timestamp", { unique: false });
+    }
+};
 
-  // Search filter
-  const searchVal = document.getElementById("search")?.value.toLowerCase() || "";
-  if(searchVal) {
-    locations = locations.filter(l => l.label.toLowerCase().includes(searchVal));
-  }
+document.getElementById("save-btn").addEventListener("click", saveLocation);
 
-  // Sort
-  const sortVal = document.getElementById("sort")?.value || "newest";
-  if(sortVal === "newest") locations.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  else if(sortVal === "oldest") locations.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-  else if(sortVal === "label") locations.sort((a,b)=>a.label.localeCompare(b.label));
+function saveLocation(){
+    let label = document.getElementById("label").value.trim();
+    if(!label) label = "Unnamed Location";
 
-  // Current location for distance
-  navigator.geolocation.getCurrentPosition(pos => {
-    const currLat = pos.coords.latitude;
-    const currLng = pos.coords.longitude;
+    if(!navigator.geolocation){ alert("Geolocation not supported"); return; }
 
-    locations.forEach((loc, index) => {
-      const div = document.createElement("div");
-      div.className = "card";
-      const distance = getDistance(currLat, currLng, loc.lat, loc.lng);
-      div.innerHTML = `
-        <strong>${loc.label}${loc.pinned ? " ⭐" : ""}</strong>
-        <p>📅 ${loc.timestamp}</p>
-        <p>🌍 (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) - ${distance < 1000 ? distance.toFixed(0)+" m" : (distance/1000).toFixed(2)+" km"}</p>
-        <div class="map-container" id="map-${index}"></div>
-        <button onclick="togglePin(${index})">${loc.pinned ? "Unpin" : "Pin"}</button>
-        <button onclick="shareLocation(${index})">Share</button>
-        <button onclick="deleteLocation(${index})">Delete</button>
-      `;
-      container.appendChild(div);
+    navigator.geolocation.getCurrentPosition(pos => {
+        const transaction = db.transaction(["locations"], "readwrite");
+        const store = transaction.objectStore("locations");
 
-      // Initialize Leaflet map
-      const map = L.map(`map-${index}`, {zoomControl:false, attributionControl:false}).setView([loc.lat, loc.lng], 16);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-      L.marker([loc.lat, loc.lng]).addTo(map);
+        store.add({
+            label,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            timestamp: new Date().toLocaleString(),
+            pinned: false
+        });
+
+        transaction.oncomplete = () => {
+            document.getElementById("label").value = "";
+            loadLocations();
+        }
     });
-  });
 }
 
-function togglePin(index) {
-  let locations = JSON.parse(localStorage.getItem("locations")) || [];
-  locations[index].pinned = !locations[index].pinned;
-  localStorage.setItem("locations", JSON.stringify(locations));
-  loadLocations();
+// Distance helper
+function getDistance(lat1, lon1, lat2, lon2){
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+    const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R*c;
 }
 
-function shareLocation(index) {
-  let locations = JSON.parse(localStorage.getItem("locations")) || [];
-  const loc = locations[index];
-  const url = `https://maps.google.com/?q=${loc.lat},${loc.lng}`;
-  navigator.clipboard.writeText(url).then(()=> alert("Link copied!"));
+// Load locations
+function loadLocations(){
+    const container = document.getElementById("locations");
+    container.innerHTML = "";
+
+    const transaction = db.transaction(["locations"], "readonly");
+    const store = transaction.objectStore("locations");
+    const requestAll = store.getAll();
+
+    requestAll.onsuccess = async () => {
+        let locations = requestAll.result;
+
+        // Search filter
+        const searchVal = document.getElementById("search")?.value.toLowerCase() || "";
+        if(searchVal) locations = locations.filter(l=>l.label.toLowerCase().includes(searchVal));
+
+        // Sort and pinned-first
+        const sortVal = document.getElementById("sort")?.value || "newest";
+        locations.sort((a,b)=>{
+            if(a.pinned && !b.pinned) return -1;
+            if(!a.pinned && b.pinned) return 1;
+
+            if(sortVal==="newest") return new Date(b.timestamp) - new Date(a.timestamp);
+            if(sortVal==="oldest") return new Date(a.timestamp) - new Date(b.timestamp);
+            if(sortVal==="label") return a.label.localeCompare(b.label);
+            return 0;
+        });
+
+        navigator.geolocation.getCurrentPosition(pos=>{
+            const currLat = pos.coords.latitude;
+            const currLng = pos.coords.longitude;
+
+            locations.forEach((loc)=>{
+                const div = document.createElement("div");
+                div.className = "card" + (loc.pinned ? " pinned" : "");
+                const distance = getDistance(currLat, currLng, loc.lat, loc.lng);
+                div.innerHTML = `
+                    <strong>${loc.label}${loc.pinned ? " ⭐" : ""}</strong>
+                    <p>📅 ${loc.timestamp}</p>
+                    <p>🌍 (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) - ${distance < 1000 ? distance.toFixed(0)+" m" : (distance/1000).toFixed(2)+" km"}</p>
+                    <div class="map-container" id="map-${loc.id}"></div>
+                    <button onclick="togglePin(${loc.id})">${loc.pinned ? "Unpin" : "Pin"}</button>
+                    <button onclick="shareLocation(${loc.id})">Share</button>
+                    <button onclick="deleteLocation(${loc.id})">Delete</button>
+                `;
+                container.appendChild(div);
+
+                const map = L.map(`map-${loc.id}`, {zoomControl:false, attributionControl:false}).setView([loc.lat, loc.lng], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                L.marker([loc.lat, loc.lng]).addTo(map);
+            });
+        });
+    }
 }
 
-function deleteLocation(index) {
-  let locations = JSON.parse(localStorage.getItem("locations")) || [];
-  locations.splice(index,1);
-  localStorage.setItem("locations", JSON.stringify(locations));
-  loadLocations();
+// Pin/unpin
+function togglePin(id){
+    const transaction = db.transaction(["locations"], "readwrite");
+    const store = transaction.objectStore("locations");
+    const req = store.get(id);
+    req.onsuccess = () => {
+        const loc = req.result;
+        loc.pinned = !loc.pinned;
+        store.put(loc);
+        loadLocations();
+    }
 }
 
-// Register service worker for PWA
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js")
-    .then(() => console.log("Service Worker Registered"));
+// Share location
+function shareLocation(id){
+    const transaction = db.transaction(["locations"], "readonly");
+    const store = transaction.objectStore("locations");
+    const req = store.get(id);
+    req.onsuccess = () => {
+        const loc = req.result;
+        const url = `https://maps.google.com/?q=${loc.lat},${loc.lng}`;
+        navigator.clipboard.writeText(url).then(()=> alert("Link copied!"));
+    }
+}
+
+// Delete location
+function deleteLocation(id){
+    const transaction = db.transaction(["locations"], "readwrite");
+    const store = transaction.objectStore("locations");
+    store.delete(id);
+    transaction.oncomplete = () => loadLocations();
+}
+
+// PWA service worker
+if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("service-worker.js")
+        .then(()=>console.log("Service Worker Registered"));
 }
