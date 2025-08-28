@@ -133,6 +133,7 @@ function createCard(loc) {
         <button onclick="shareLocation(${loc.id})">Share</button>
         <button onclick="deleteLocation(${loc.id})">Delete</button>
         <button onclick="showMap(${loc.id}, ${loc.lat}, ${loc.lng})">View Map</button>
+        <button onclick="goToGMaps(${loc.lat}, ${loc.lng})">Go</button>
         <div class="map-container" id="map-${loc.id}" style="display:none;height:200px;"></div>
     `;
     return div;
@@ -145,6 +146,11 @@ function prependLocation(loc) {
 }
 
 // ---------- SHOW MAP ON DEMAND ----------
+// ---------- OPEN IN GOOGLE MAPS ----------
+function goToGMaps(lat, lng) {
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(url, '_blank');
+}
 function showMap(id, lat, lng){
     const container = document.getElementById(`map-${id}`);
     container.style.display = "block";
