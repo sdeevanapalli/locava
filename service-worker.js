@@ -1,59 +1,39 @@
-// service-worker.js
+const CACHE_NAME = "location-saver-cache-v2"; // bump version when you update files
+const ASSETS_TO_CACHE = [
+  "./",
+  "./index.html",
+  "./style.css",
+  "./script.js",
+  "./manifest.json"
+];
 
-const CACHE_NAME = "quietspace-cache-v1";
-
-// Instead of hardcoding files, we’ll cache them dynamically
-self.addEventListener("install", (event) => {
+// Install: cache files
+self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // Pre-cache your core files (HTML + offline page, etc.)
-      return cache.addAll([
-        "/",
-        "/index.html",
-      ]);
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(ASSETS_TO_CACHE);
     })
   );
+  self.skipWaiting(); // activate new worker immediately
 });
 
-// Activate event: cleanup old caches
-self.addEventListener("activate", (event) => {
+// Activate: clear old caches
+self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      )
-    )
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      );
+    })
   );
+  self.clients.claim(); // control all clients immediately
 });
 
-// Fetch event: network-first for CSS/JS (with version), cache-first for others
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-
-  // For CSS/JS with ?v= query → always fetch latest, update cache
-  if (
-    request.url.includes(".css") ||
-    request.url.includes(".js")
-  ) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match(request)) // fallback if offline
-    );
-  } else {
-    // For HTML, images, etc → cache-first
-    event.respondWith(
-      caches.match(request).then(
-        (cached) => cached || fetch(request)
-      )
-    );
-  }
+// Fetch: serve from cache, fallback to network
+self.addEventListener("fetch", event => {
+  event.respondWith(
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request);
+    })
+  );
 });
