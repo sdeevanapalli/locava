@@ -4,6 +4,7 @@ const saveBtn = document.getElementById("save-btn");
 let currentPage = 0;
 const pageSize = 10;
 
+
 // ---------- DISABLE SAVE INITIALLY ----------
 saveBtn.disabled = true;
 saveBtn.textContent = "Waiting for location...";
